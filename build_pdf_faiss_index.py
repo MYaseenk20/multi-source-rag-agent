@@ -12,7 +12,6 @@ embedding = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-
 def build_pdf_faiss_index():
     loader = PyPDFLoader(file_path)
     docs = loader.load()
@@ -25,5 +24,6 @@ def build_pdf_faiss_index():
 
     PineconeVectorStore.from_documents(documents,embedding=embedding,index_name=index_name)
     print("*** Loading to vectorstore done ***")
+
 if __name__ == '__main__':
     build_pdf_faiss_index()

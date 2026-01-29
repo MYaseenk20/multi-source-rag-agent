@@ -8,6 +8,8 @@ from langchain_core.tools import create_retriever_tool
 from langsmith import Client
 from langchain_huggingface import HuggingFaceEmbeddings
 
+from tools.pdf_qa_tool import pdf_qa_tool
+
 load_dotenv()
 
 from langchain_ollama import ChatOllama  # Changed import
@@ -25,21 +27,27 @@ def load_retriever():
 def build_agent_executor():
     model = ChatOllama(
         model="llama3.1:latest",
-        temperature=0.6,
+        temperature=0.8,
     )
 
 
     client = Client()
     prompt = client.pull_prompt("hwchase17/react-chat")
 
-    search = TavilySearch()
+    search = TavilySearch(
+        description=(
+            "A web search tool for finding current information on the internet. "
+            "Use this ONLY when information is not available in company documents "
+            "or when you need current external information like news, weather, or public data."
+        )
+    )
 
     retriever_tools = create_retriever_tool(
         load_retriever(),
         "lcel_search",
         "Use this tool when searching for information about Langchain Expression Language (LCEL)."
     )
-    tools = [search, retriever_tools]
+    tools = [search, retriever_tools,pdf_qa_tool]
 
     # Use create_react_agent instead
     # agent = create_react_agent(
@@ -47,7 +55,7 @@ def build_agent_executor():
     #     prompt=prompt,
     #     tools=tools
     # )
-    #
+    # l
     # return AgentExecutor(
     #     agent=agent,
     #     tools=tools,
@@ -61,24 +69,36 @@ def build_agent_executor():
         tools=tools,
         system_prompt="You are a helpful assistant that can search the web and retrieve information about LangChain Agent. Use the appropriate tools to answer user questions accurately."
     )
-
     return agent
+
 
 def process_chat(agentExecutor, user_input, chat_history):
     # response = agentExecutor.invoke({
     #     "input": user_input,
     #     "chat_history": chat_history
     # })
-    # return response["output"]
 
     messages = chat_history + [HumanMessage(content=user_input)]
 
     response = agentExecutor.invoke({
         "messages": messages
     })
+    # Extract tools used
+    tools_used = []
+    for msg in response["messages"]:
+        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+            for tool_call in msg.tool_calls:
+                tools_used.append(tool_call['name'])
+
+    # Print summary
+    if tools_used:
+        print(f"\n🔧 Tools Used: {', '.join(set(tools_used))}\n")
+    else:
+        print("\n📝 No tools were used (direct response)\n")
 
     # Extract the final response
     return response["messages"][-1].content
+    # return response["output"]
 
 
 if __name__ == '__main__':
