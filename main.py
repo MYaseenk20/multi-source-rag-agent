@@ -1,116 +1,39 @@
-from dotenv import load_dotenv
-from langchain.agents import create_agent
-from langchain_classic.agents import create_react_agent, AgentExecutor
-from langchain_community.vectorstores import FAISS
-from langchain_tavily import TavilySearch
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.tools import create_retriever_tool
-from langsmith import Client
-from langchain_huggingface import HuggingFaceEmbeddings
+import streamlit as st
 
-from tools.pdf_qa_tool import pdf_qa_tool
+from backend.core import AgentService
 
-load_dotenv()
+st.set_page_config(
+    page_title="LangChain Agent Chat",
+    page_icon="🤖",
+)
 
-from langchain_ollama import ChatOllama  # Changed import
-INDEX_DIR = "faiss_lcel_index"
+st.title("🤖 LangChain Agent Assistant")
+st.markdown("Ask questions about LangChain and HR Policy!")
 
+prompt = st.text_input("Prompt",placeholder="Enter your prompt here...")
 
-def load_retriever():
-    embedding = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
+if "agent_service" not in st.session_state:
+    with st.spinner("🔄 Initializing agent..."):
+        st.session_state["agent_service"] = AgentService()
 
-    vectorStore = FAISS.load_local(INDEX_DIR, embeddings=embedding,allow_dangerous_deserialization=True)
-    return vectorStore.as_retriever(search_kwargs={"k": 3})
+if "user_prompt_history" not in st.session_state:
+    st.session_state["user_prompt_history"] = []
 
-def build_agent_executor():
-    model = ChatOllama(
-        model="llama3.1:latest",
-        temperature=0.8,
-    )
+if "user_answers_history" not in st.session_state:
+    st.session_state["user_answers_history"] = []
 
+if "chat_history" not in st.session_state:
+    st.session_state["chat_history"] = []
 
-    client = Client()
-    prompt = client.pull_prompt("hwchase17/react-chat")
+if prompt:
+    with st.spinner("Processing..."):
+        generated_response = st.session_state.agent_service.process_chat(prompt,st.session_state.chat_history)
+        st.session_state["user_prompt_history"].append(prompt)
+        st.session_state["user_answers_history"].append(generated_response)
+        st.session_state["chat_history"].append(("human",prompt))
+        st.session_state["chat_history"].append(("ai",generated_response["result"]))
 
-    search = TavilySearch(
-        description=(
-            "A web search tool for finding current information on the internet. "
-            "Use this ONLY when information is not available in company documents "
-            "or when you need current external information like news, weather, or public data."
-        )
-    )
-
-    retriever_tools = create_retriever_tool(
-        load_retriever(),
-        "lcel_search",
-        "Use this tool when searching for information about Langchain Expression Language (LCEL)."
-    )
-    tools = [search, retriever_tools,pdf_qa_tool]
-
-    # Use create_react_agent instead
-    # agent = create_react_agent(
-    #     llm=model,
-    #     prompt=prompt,
-    #     tools=tools
-    # )
-    # l
-    # return AgentExecutor(
-    #     agent=agent,
-    #     tools=tools,
-    #     verbose=False,                 # turn on only in dev
-    #     handle_parsing_errors=True,
-    #     return_intermediate_steps=False
-    # )
-
-    agent = create_agent(
-        model=model,
-        tools=tools,
-        system_prompt="You are a helpful assistant that can search the web and retrieve information about LangChain Agent. Use the appropriate tools to answer user questions accurately."
-    )
-    return agent
-
-
-def process_chat(agentExecutor, user_input, chat_history):
-    # response = agentExecutor.invoke({
-    #     "input": user_input,
-    #     "chat_history": chat_history
-    # })
-
-    messages = chat_history + [HumanMessage(content=user_input)]
-
-    response = agentExecutor.invoke({
-        "messages": messages
-    })
-    # Extract tools used
-    tools_used = []
-    for msg in response["messages"]:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            for tool_call in msg.tool_calls:
-                tools_used.append(tool_call['name'])
-
-    # Print summary
-    if tools_used:
-        print(f"\n🔧 Tools Used: {', '.join(set(tools_used))}\n")
-    else:
-        print("\n📝 No tools were used (direct response)\n")
-
-    # Extract the final response
-    return response["messages"][-1].content
-    # return response["output"]
-
-
-if __name__ == '__main__':
-    chat_history = []
-
-    while True:
-        user_input = input("You: ")
-        if user_input.lower() == 'exit':
-            break
-
-        response = process_chat(build_agent_executor(), user_input, chat_history)
-        chat_history.append(HumanMessage(content=user_input))
-        chat_history.append(AIMessage(content=response))
-
-        print("Assistant:", response)
+if st.session_state["user_answers_history"]:
+    for generated_response,user_query in zip(st.session_state["user_answers_history"],st.session_state["user_prompt_history"]):
+        st.chat_message("user").write(user_query)
+        st.chat_message("assistant").write(generated_response)
