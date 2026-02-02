@@ -19,7 +19,7 @@ class AgentService:
     def __init__(self,index_dir="faiss_lcel_index"):
         self.index_dir = index_dir
         self.chat_history = []
-        self.agent = self._build_agent
+        self.agent = self._build_agent()
 
 
     def _load_retriever(self):
@@ -49,7 +49,6 @@ class AgentService:
             system_prompt="""
             You are a helpful assistant that can search the web and retrieve information about LangChain Agent.
              Use the appropriate tools to answer user questions accurately.
-             When using pdf_qa_tool ALWAYS include the complete 'Sources:' section in your response.,
             """
 
         )
